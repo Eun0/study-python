@@ -1,4 +1,4 @@
-class Session(ConnectionBase):
+class AsyncSession(AsyncConnectionBase):  # 변경됨
     def __init__(self, *args):
         super().__init__(*args)
         self._clear_state(None, None)
@@ -9,13 +9,13 @@ class Session(ConnectionBase):
         self.secret = None
         self.guesses = []
 
-    def loop(self):
-        while command := self.receive():
+    async def loop(self):  # 변경됨
+        while command := await self.receive():  # 변경됨
             parts = command.split(' ')
             if parts[0] == 'PARAMS':
                 self.set_params(parts)
             elif parts[0] == 'NUMBER':
-                self.send_number()
+                await self.send_number()  # 변경됨
             elif parts[0] == 'REPORT':
                 self.receive_report(parts)
             else:
@@ -36,10 +36,10 @@ class Session(ConnectionBase):
             if guess not in self.guesses:
                 return guess
 
-    def send_number(self):
+    async def send_number(self):
         guess = self.next_guess()
         self.guesses.append(guess)
-        self.send(format(guess))
+        await self.send(format(guess))
 
     def receive_report(self, parts):
         assert len(parts) == 2
