@@ -1,17 +1,23 @@
 import asyncio
 
-async def handle_connection(reader, writer):
-    session = AsyncSession(reader, writer)
-    try:
-        await session.loop()
-    except EOFError:
-        pass
+def handle_connection(connection):
+    with connection:
+        session = Session(connection)
+        try:
+            session.loop()
+        except EOFError:
+            pass
 
-async def run_server(address):
-    server = await asyncio.start_server(
-        handle_connection, *address)
-    async with server:
-        await server.serve_forever()
+def run_server(address):
+    with socket.socket() as listener:
+        listener.bind(address)
+        listener.listen()
+        while True:
+            connection, _ = listener.accept()
+            thread = Thread(target=handle_connection,
+                            args=(connection,),
+                            daemon=True)
+            thread.start()
 
 async def run_client(address):
     # 서버가 시작될 수 있게 기다려주기
