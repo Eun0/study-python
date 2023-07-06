@@ -1,51 +1,48 @@
-import socket
-from threading import Thread
+import asyncio
 
+async def handle_connection(reader, writer):
+    session = AsyncSession(reader, writer)
+    try:
+        await session.loop()
+    except EOFError:
+        pass
 
-def handle_connection(connection):
-    with connection:
-        session = Session(connection)
-        try:
-            session.loop()
-        except EOFError:
-            pass
+async def run_server(address):
+    server = await asyncio.start_server(
+        handle_connection, *address)
+    async with server:
+        await server.serve_forever()
 
+async def run_client(address):
+    # 서버가 시작될 수 있게 기다려주기
+    await asyncio.sleep(0.1)
 
-def run_server(address):
-    with socket.socket() as listener:
-        listener.bind(address)
-        listener.listen()
-        while True:
-            connection, _ = listener.accept()
-            thread = Thread(target=handle_connection,
-                            args=(connection,),
-                            daemon=True)
-            thread.start()
+    streams = await asyncio.open_connection(*address)   # New
+    client = AsyncClient(*streams)                      # New
 
-def run_client(address):
-    with socket.create_connection(address) as connection:
-        client = Client(connection)
+    async with client.session(1, 5, 3):
+        results = [(x, await client.report_outcome(x))
+                   async for x in client.request_numbers(5)]
 
-        with client.session(1, 5, 3):
-            results = [(x, client.report_outcome(x))
-                       for x in client.request_numbers(5)]
+    async with client.session(10, 15, 12):
+        async for number in client.request_numbers(5):
+            outcome = await client.report_outcome(number)
+            results.append((number, outcome))
 
-        with client.session(10, 15, 12):
-            for number in client.request_numbers(5):
-                outcome = client.report_outcome(number)
-                results.append((number, outcome))
+    _, writer = streams                                # 새 기능
+    writer.close()                                     # 새 기능
+    await writer.wait_closed()                         # 새 기능
 
     return results
 
+async def main():
+    address = ('127.0.0.1', 4321)
 
-def main():
-    address = ('127.0.0.1', 1234)
-    server_thread = Thread(
-        target=run_server, args=(address,), daemon=True)
-    server_thread.start()
+    server = run_server(address)
+    asyncio.create_task(server)
 
-    results = run_client(address)
+    results = await run_client(address)
     for number, outcome in results:
         print(f'클라이언트: {number}는 {outcome}')
 
-main()
+asyncio.run(main())
